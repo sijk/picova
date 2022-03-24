@@ -185,7 +185,7 @@ static float ina219_calc_power_mW(uint16_t reg, float lsb)
 
 static float ina219_calc_current_mA(uint16_t reg, float lsb)
 {
-    return reg * lsb * 1000.f;
+    return (int16_t)reg * lsb * 1000.f;
 }
 
 float ina219_read_shunt_mV(ina219_t* hw)
