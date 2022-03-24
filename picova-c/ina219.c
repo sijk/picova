@@ -42,7 +42,7 @@ static int ina219_write_reg(ina219_t* hw, uint8_t reg, uint16_t value)
     return i2c_write_blocking(hw->i2c, hw->addr, buff, sizeof(buff), false);
 }
 
-int ina219_init(ina219_t* hw, i2c_inst_t* i2c, uint8_t addr)
+int ina219_init(ina219_t* hw, i2c_inst_t* i2c, uint8_t addr, float shunt_ohms)
 {
     hw->i2c = i2c;
     hw->addr = addr;
@@ -50,6 +50,7 @@ int ina219_init(ina219_t* hw, i2c_inst_t* i2c, uint8_t addr)
     hw->cal = 0;
     hw->current_lsb = 0.f;
     hw->power_lsb = 0.f;
+    hw->shunt_ohms = shunt_ohms;
 }
 
 int ina219_reset(ina219_t* hw)
@@ -91,6 +92,11 @@ static void ina219_calc_config(uint16_t reg, ina219_cfg_t* cfg)
     cfg->shunt_adc = (reg >> 3) & 0x0F;
 }
 
+void ina219_get_config(ina219_t* hw, ina219_cfg_t* cfg)
+{
+    ina219_calc_config(hw->cfg, cfg);
+}
+
 static float ina219_calc_max_shunt_V(uint16_t reg)
 {
     enum ina219_shunt_range range = (reg >> 11) & 0x03;
@@ -105,17 +111,55 @@ static float ina219_calc_max_shunt_V(uint16_t reg)
     return NAN;
 }
 
-int ina219_calibrate(ina219_t* hw, float shunt_ohms)
+int ina219_calibrate(ina219_t* hw)
 {
-    const float max_current_A = ina219_calc_max_shunt_V(hw->cfg) / shunt_ohms;
+    const float max_current_A = ina219_calc_max_shunt_V(hw->cfg) / hw->shunt_ohms;
     const float current_lsb = max_current_A / (1 << 15);
-    const float min_lsb = 0.04096f / (0xFFFE * shunt_ohms);
+    const float min_lsb = 0.04096f / (0xFFFE * hw->shunt_ohms);
 
     hw->current_lsb = fmax(current_lsb, min_lsb);
-    hw->cal = 0.04096f / (hw->current_lsb * shunt_ohms);
+    hw->cal = 0.04096f / (hw->current_lsb * hw->shunt_ohms);
     hw->power_lsb = 20 * hw->current_lsb;
 
     return ina219_write_reg(hw, INA219_REG_CALIB, hw->cal);
+}
+
+int ina219_increase_bus_range(ina219_t* hw)
+{
+    int err;
+    ina219_cfg_t cfg;
+    ina219_calc_config(hw->cfg, &cfg);
+
+    if (cfg.bus_range < INA219_BUS_RANGE_26V) {
+        cfg.bus_range++;
+
+        err = ina219_configure(hw, &cfg);
+        if (err < 0)
+            return err;
+    }
+
+    return PICO_OK;
+}
+
+int ina219_increase_shunt_range(ina219_t* hw)
+{
+    int err;
+    ina219_cfg_t cfg;
+    ina219_calc_config(hw->cfg, &cfg);
+
+    if (cfg.shunt_range < INA219_SHUNT_RANGE_320mV) {
+        cfg.shunt_range++;
+
+        err = ina219_configure(hw, &cfg);
+        if (err < 0)
+            return err;
+
+        err = ina219_calibrate(hw);
+        if (err < 0)
+            return err;
+    }
+
+    return PICO_OK;
 }
 
 static float ina219_calc_shunt_mV(uint16_t reg)
@@ -201,6 +245,7 @@ int ina219_read_data(ina219_t* hw, ina219_data_t* data)
     if (err < 0)
         return err;
 
+    // Read power last because reading it clears BUS_CNVR
     err = ina219_read_reg(hw, INA219_REG_POWER, &data->power);
     if (err < 0)
         return err;
@@ -219,6 +264,23 @@ bool ina219_data_overflowed(const ina219_data_t* data)
 bool ina219_data_ready(const ina219_data_t* data)
 {
     return data->bus & INA219_BUS_CNVR;
+}
+
+bool ina219_data_shunt_clipped(const ina219_data_t* data)
+{
+    const int16_t current = data->current;
+    const int16_t nearly_full_scale = 0x7FF8;
+
+    return (current > nearly_full_scale)
+        || (current < -nearly_full_scale);
+}
+
+bool ina219_data_bus_clipped(const ina219_data_t* data)
+{
+    const uint16_t bus = data->bus >> 3;
+    const int16_t nearly_full_scale_16V = 0xF98;
+
+    return bus > nearly_full_scale_16V;
 }
 
 float ina219_data_bus_V(const ina219_data_t* data)

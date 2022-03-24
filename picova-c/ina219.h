@@ -20,6 +20,7 @@ struct ina219
     uint16_t cal;
     float current_lsb;
     float power_lsb;
+    float shunt_ohms;
 };
 
 // The result of ina219_read_data(). Do not access the members of this struct
@@ -76,10 +77,13 @@ typedef struct ina219 ina219_t;
 typedef struct ina219_data ina219_data_t;
 typedef struct ina219_cfg ina219_cfg_t;
 
-int ina219_init(ina219_t* hw, i2c_inst_t* i2c, uint8_t addr);
+int ina219_init(ina219_t* hw, i2c_inst_t* i2c, uint8_t addr, float shunt_ohms);
 int ina219_reset(ina219_t* hw);
 int ina219_configure(ina219_t* hw, const ina219_cfg_t* cfg);
-int ina219_calibrate(ina219_t* hw, float shunt_ohms);
+void ina219_get_config(ina219_t* hw, ina219_cfg_t* cfg);
+int ina219_calibrate(ina219_t* hw);
+int ina219_increase_bus_range(ina219_t* hw);
+int ina219_increase_shunt_range(ina219_t* hw);
 
 float ina219_read_shunt_mV(ina219_t* hw);
 float ina219_read_bus_V(ina219_t* hw);
@@ -90,6 +94,8 @@ float ina219_read_current_mA(ina219_t* hw);
 int ina219_read_data(ina219_t* hw, ina219_data_t* data);
 bool ina219_data_overflowed(const ina219_data_t* data);
 bool ina219_data_ready(const ina219_data_t* data);
+bool ina219_data_bus_clipped(const ina219_data_t* data);
+bool ina219_data_shunt_clipped(const ina219_data_t* data);
 float ina219_data_bus_V(const ina219_data_t* data);
 float ina219_data_power_mW(const ina219_data_t* data);
 float ina219_data_current_mA(const ina219_data_t* data);

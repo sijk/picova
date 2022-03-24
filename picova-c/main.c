@@ -37,6 +37,21 @@ void main_core1()
         if (!ina219_data_ready(&m.data))
             continue;
 
+        if (ina219_data_overflowed(&m.data)) {
+            ina219_increase_shunt_range(&ina219);
+            continue;
+        }
+
+        if (ina219_data_shunt_clipped(&m.data)) {
+            ina219_increase_shunt_range(&ina219);
+            continue;
+        }
+
+        if (ina219_data_bus_clipped(&m.data)) {
+            ina219_increase_bus_range(&ina219);
+            continue;
+        }
+
         queue_add_blocking(&meas_queue, &m);
         sleep_until(next);
     }
@@ -58,14 +73,14 @@ int main()
 
     const ina219_cfg_t cfg = {
         .bus_range   = INA219_BUS_RANGE_16V,
-        .shunt_range = INA219_SHUNT_RANGE_320mV,
+        .shunt_range = INA219_SHUNT_RANGE_40mV,
         .bus_adc     = INA219_ADC_BITS_9,
         .shunt_adc   = INA219_ADC_BITS_11,
     };
 
-    ina219_init(&ina219, I2C, INA219_ADDR_DEFAULT);
+    ina219_init(&ina219, I2C, INA219_ADDR_DEFAULT, SHUNT_OHMS);
     ina219_configure(&ina219, &cfg);
-    ina219_calibrate(&ina219, SHUNT_OHMS);
+    ina219_calibrate(&ina219);
 
     queue_init(&meas_queue, sizeof(struct measurement), 255);
     multicore_launch_core1(main_core1);
