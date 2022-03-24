@@ -15,3 +15,5 @@ add a configuration interface over USB at some point.
 
 There's a fairly simple Python script to run on the host to plot the received
 data in real time. 
+
+![photo](photo.jpg)
