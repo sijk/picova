@@ -4,6 +4,7 @@ using OxyPlot.Series;
 using PicovaUI.Models;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace PicovaUI.ViewModels
 {
@@ -91,9 +92,18 @@ namespace PicovaUI.ViewModels
             var minTime = lastTime - TimeWindow.TotalMilliseconds * 1000;
             var n = vLine.Points.FindIndex(p => p.X >= minTime);
 
-            vLine.Points.RemoveRange(0, n);
-            aLine.Points.RemoveRange(0, n);
-            wLine.Points.RemoveRange(0, n);
+            if (n > 0)
+            {
+                vLine.Points.RemoveRange(0, n);
+                aLine.Points.RemoveRange(0, n);
+                wLine.Points.RemoveRange(0, n);
+
+                Plot.Axes.Single(ax => ax.Key == "T").Minimum = double.NaN;
+            }
+            else
+            {
+                Plot.Axes.Single(ax => ax.Key == "T").Minimum = minTime;
+            }
 
             Plot.InvalidatePlot(true);
         }
