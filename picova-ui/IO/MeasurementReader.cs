@@ -7,23 +7,37 @@ using ReactiveUI;
 
 namespace PicovaUI.IO
 {
-    public class MeasurementReader : ReactiveObject
+    public class MeasurementReader : ReactiveObject, IDisposable
     {
         private static readonly string newline = "\r\n";
 
-        private readonly SerialPort serial;
+        private readonly SerialPort serial = new();
         private readonly StringBuilder buff = new();
         private readonly Subject<Measurement> measurements = new();
 
+        public bool Connected => serial.IsOpen;
         public IObservable<Measurement> Measurements => measurements;
 
-        public MeasurementReader(string port)
+        public void Connect(string port)
         {
-            serial = new SerialPort(port);
-            serial.Open();
+            serial.PortName = port;
             serial.DtrEnable = true;
             serial.RtsEnable = true;
+            serial.Open();
             serial.DataReceived += OnDataReceived;
+            this.RaisePropertyChanged(nameof(Connected));
+        }
+
+        public void Disconnect()
+        {
+            serial.DataReceived -= OnDataReceived;
+            serial.Close();
+            this.RaisePropertyChanged(nameof(Connected));
+        }
+
+        public void Dispose()
+        {
+            ((IDisposable)serial).Dispose();
         }
 
         private void OnDataReceived(object sender, SerialDataReceivedEventArgs e)
@@ -31,7 +45,14 @@ namespace PicovaUI.IO
             if (e.EventType != SerialData.Chars)
                 return;
 
-            buff.Append(serial.ReadExisting());
+            try
+            {
+                buff.Append(serial.ReadExisting());
+            }
+            catch
+            {
+                return;
+            }
 
             var str = buff.ToString();
             var end = str.IndexOf(newline);

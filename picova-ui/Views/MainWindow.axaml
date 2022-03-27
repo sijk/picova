@@ -12,6 +12,15 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <ContentControl Content="{Binding MeasurementPlot}"/>
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Padding="10" >
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <ComboBox Items="{Binding SerialPorts}" SelectedItem="{Binding SelectedPort}"/>
+                <Button Content="{Binding RunLabel}" Command="{Binding Run}"/>
+            </StackPanel>
+        </Border>
+
+        <ContentControl Content="{Binding MeasurementPlot}" Padding="10"/>
+    </DockPanel>
 
 </Window>
