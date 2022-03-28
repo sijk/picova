@@ -20,6 +20,16 @@ namespace PicovaUI.ViewModels
         public ReactiveCommand<Unit, Unit> Run { get; }
         public MeasurementPlotViewModel MeasurementPlot { get; } = new();
 
+        public double WindowSeconds
+        {
+            get => MeasurementPlot.TimeWindow.TotalSeconds;
+            set
+            {
+                MeasurementPlot.TimeWindow = TimeSpan.FromSeconds(value);
+                this.RaisePropertyChanged(nameof(WindowSeconds));
+            }
+        }
+
         public MainWindowViewModel()
         {
             var portSelected = this.WhenAnyValue(vm => vm.SelectedPort).Select(p => p != null);

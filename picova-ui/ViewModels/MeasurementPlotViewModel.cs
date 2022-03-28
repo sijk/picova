@@ -15,7 +15,7 @@ namespace PicovaUI.ViewModels
         private readonly LineSeries wLine;
 
         public PlotModel Plot { get; }
-        public TimeSpan TimeWindow { get; init; } = TimeSpan.FromSeconds(5);
+        public TimeSpan TimeWindow { get; set; } = TimeSpan.FromSeconds(5);
 
         public MeasurementPlotViewModel()
         {
