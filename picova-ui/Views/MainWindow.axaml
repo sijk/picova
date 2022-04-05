@@ -13,12 +13,19 @@
     </Design.DataContext>
 
     <DockPanel>
-        <Border DockPanel.Dock="Top" Padding="10">
+        <Border DockPanel.Dock="Top" Padding="20" Background="#11000000" BorderBrush="Black" BorderThickness="1" Margin="-1">
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <ComboBox Items="{Binding SerialPorts}" SelectedItem="{Binding SelectedPort}" IsEnabled="{Binding !Running}" VerticalAlignment="Center"/>
                 <Button Content="{Binding RunLabel}" Command="{Binding Run}"/>
-                <Slider Value="{Binding WindowSeconds}" Minimum="1" Maximum="60" Width="200"/>
-                <TextBlock Text="{Binding WindowSeconds, StringFormat={}{0:F1} s}" VerticalAlignment="Center"/>
+
+                <Border BorderBrush="Black" BorderThickness="1,0,0,0" Height="{Binding $parent[Border].Height}" Margin="10,-10"/>
+
+                <TextBlock Text="Time window:" VerticalAlignment="Center"/>
+                <NumericUpDown Value="{Binding WindowSeconds}" Minimum="1" Maximum="60" Increment="1"/>
+
+                <Border BorderBrush="Black" BorderThickness="1,0,0,0" Height="{Binding $parent[Border].Height}" Margin="10,-10"/>
+
+                <TextBlock Text="Filter:" VerticalAlignment="Center"/>
                 <ComboBox Items="{Binding Filters}" SelectedItem="{Binding MeasurementPlot.Filter}" VerticalAlignment="Center"/>
             </StackPanel>
         </Border>
