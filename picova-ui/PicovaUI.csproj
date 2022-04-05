@@ -25,6 +25,7 @@
     <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
     <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="0.10.13" />
     <PackageReference Include="Avalonia.ReactiveUI" Version="0.10.13" />
+    <PackageReference Include="MathNet.Filtering" Version="0.7.0" />
     <PackageReference Include="OxyPlot.Avalonia" Version="2.1.0-Preview1" />
     <PackageReference Include="ReactiveUI.Fody" Version="17.1.50" />
     <PackageReference Include="SerialPortStream" Version="2.4.0" />

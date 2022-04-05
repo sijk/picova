@@ -19,6 +19,7 @@
                 <Button Content="{Binding RunLabel}" Command="{Binding Run}"/>
                 <Slider Value="{Binding WindowSeconds}" Minimum="1" Maximum="60" Width="200"/>
                 <TextBlock Text="{Binding WindowSeconds, StringFormat={}{0:F1} s}" VerticalAlignment="Center"/>
+                <ComboBox Items="{Binding Filters}" SelectedItem="{Binding MeasurementPlot.Filter}" VerticalAlignment="Center"/>
             </StackPanel>
         </Border>
 

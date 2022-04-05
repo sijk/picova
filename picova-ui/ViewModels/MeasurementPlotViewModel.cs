@@ -1,7 +1,10 @@
-﻿using OxyPlot;
+﻿using MathNet.Filtering;
+using MathNet.Filtering.Median;
+using OxyPlot;
 using OxyPlot.Axes;
 using OxyPlot.Series;
 using PicovaUI.Models;
+using ReactiveUI;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,12 +13,25 @@ namespace PicovaUI.ViewModels
 {
     public class MeasurementPlotViewModel : ViewModelBase
     {
+        private readonly List<Measurement> meas = new();
         private readonly LineSeries vLine;
         private readonly LineSeries aLine;
         private readonly LineSeries wLine;
+        private readonly OnlineFilter[] filters = new OnlineFilter[3];
+        private Filter filterType;
 
         public PlotModel Plot { get; }
         public TimeSpan TimeWindow { get; set; } = TimeSpan.FromSeconds(5);
+        public Filter Filter
+        {
+            get => filterType;
+            set
+            {
+                filterType = value;
+                Refilter();
+                this.RaisePropertyChanged(nameof(Filter));
+            }
+        }
 
         public MeasurementPlotViewModel()
         {
@@ -75,18 +91,22 @@ namespace PicovaUI.ViewModels
             Plot.Series.Add(vLine);
             Plot.Series.Add(aLine);
             Plot.Series.Add(wLine);
+        
+            Refilter();
         }
 
         public void AddMeasurements(IEnumerable<Measurement> measurements)
         {
             uint lastTime = 0;
 
-            foreach (var meas in measurements)
+            meas.AddRange(measurements);
+
+            foreach (var m in measurements)
             {
-                vLine.Points.Add(new DataPoint(meas.Timestamp, meas.Voltage));
-                aLine.Points.Add(new DataPoint(meas.Timestamp, meas.Current));
-                wLine.Points.Add(new DataPoint(meas.Timestamp, meas.Power));
-                lastTime = meas.Timestamp;
+                vLine.Points.Add(new DataPoint(m.Timestamp, filters[0].ProcessSample(m.Voltage)));
+                aLine.Points.Add(new DataPoint(m.Timestamp, filters[1].ProcessSample(m.Current)));
+                wLine.Points.Add(new DataPoint(m.Timestamp, filters[2].ProcessSample(m.Power)));
+                lastTime = m.Timestamp;
             }
 
             var minTime = lastTime - TimeWindow.TotalMilliseconds * 1000;
@@ -94,6 +114,7 @@ namespace PicovaUI.ViewModels
 
             if (n > 0)
             {
+                meas.RemoveRange(0, n);
                 vLine.Points.RemoveRange(0, n);
                 aLine.Points.RemoveRange(0, n);
                 wLine.Points.RemoveRange(0, n);
@@ -106,6 +127,44 @@ namespace PicovaUI.ViewModels
             }
 
             Plot.InvalidatePlot(true);
+        }
+
+        private void Refilter()
+        {
+            Func<OnlineFilter> makeFilter = filterType switch 
+            {
+                Filter.Median => () => new OnlineMedianFilter(7),
+                _ => () => new OnlineIdentityFilter(),
+            };
+
+            filters[0] = makeFilter();
+            filters[1] = makeFilter();
+            filters[2] = makeFilter();
+
+            vLine.Points.Clear();
+            aLine.Points.Clear();
+            wLine.Points.Clear();
+
+            foreach (var m in meas)
+            {
+                vLine.Points.Add(new DataPoint(m.Timestamp, filters[0].ProcessSample(m.Voltage)));
+                aLine.Points.Add(new DataPoint(m.Timestamp, filters[1].ProcessSample(m.Current)));
+                wLine.Points.Add(new DataPoint(m.Timestamp, filters[2].ProcessSample(m.Power)));
+            }
+
+            Plot.InvalidatePlot(true);
+        }
+
+        private class OnlineIdentityFilter : OnlineFilter
+        {
+            public override double ProcessSample(double sample)
+            {
+                return sample;
+            }
+
+            public override void Reset()
+            {
+            }
         }
     }
 }

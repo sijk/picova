@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.IO.Ports;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
 using Avalonia.Threading;
+using PicovaUI.Models;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 
@@ -16,6 +17,7 @@ namespace PicovaUI.ViewModels
 
         public ReadOnlyCollection<string> SerialPorts => new(SerialPort.GetPortNames());
         [Reactive] public string? SelectedPort { get; set; }
+        public ReadOnlyCollection<Filter> Filters => new(Enum.GetValues<Filter>());
         [ObservableAsProperty] public string RunLabel { get; } = string.Empty;
         public ReactiveCommand<Unit, Unit> Run { get; }
         [ObservableAsProperty] public bool Running { get; }
