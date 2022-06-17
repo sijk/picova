@@ -1,6 +1,7 @@
-﻿using MathNet.Filtering;
+using MathNet.Filtering;
 using MathNet.Filtering.Median;
 using OxyPlot;
+using OxyPlot.Annotations;
 using OxyPlot.Axes;
 using OxyPlot.Series;
 using PicovaUI.Models;
@@ -17,6 +18,9 @@ namespace PicovaUI.ViewModels
         private readonly LineSeries vLine;
         private readonly LineSeries aLine;
         private readonly LineSeries wLine;
+        private readonly TextAnnotation vLabel;
+        private readonly TextAnnotation aLabel;
+        private readonly TextAnnotation wLabel;
         private readonly OnlineFilter[] filters = new OnlineFilter[3];
         private Filter filterType;
 
@@ -81,6 +85,33 @@ namespace PicovaUI.ViewModels
                 YAxisKey = "W",
             };
 
+            vLabel = new TextAnnotation
+            {
+                TextPosition = new DataPoint(0, 0),
+                FontSize = 16,
+                TextHorizontalAlignment = HorizontalAlignment.Right,
+                StrokeThickness = 0,
+                YAxisKey = "V",
+            };
+
+            aLabel = new TextAnnotation
+            {
+                TextPosition = new DataPoint(0, 0),
+                FontSize = 16,
+                TextHorizontalAlignment = HorizontalAlignment.Right,
+                StrokeThickness = 0,
+                YAxisKey = "A",
+            };
+
+            wLabel = new TextAnnotation
+            {
+                TextPosition = new DataPoint(0, 0),
+                FontSize = 16,
+                TextHorizontalAlignment = HorizontalAlignment.Right,
+                StrokeThickness = 0,
+                YAxisKey = "W",
+            };
+
             Plot = new PlotModel();
 
             Plot.Axes.Add(vAxis);
@@ -91,7 +122,11 @@ namespace PicovaUI.ViewModels
             Plot.Series.Add(vLine);
             Plot.Series.Add(aLine);
             Plot.Series.Add(wLine);
-        
+
+            Plot.Annotations.Add(vLabel);
+            Plot.Annotations.Add(aLabel);
+            Plot.Annotations.Add(wLabel);
+
             Refilter();
         }
 
@@ -107,6 +142,25 @@ namespace PicovaUI.ViewModels
                 aLine.Points.Add(new DataPoint(m.Timestamp, filters[1].ProcessSample(m.Current)));
                 wLine.Points.Add(new DataPoint(m.Timestamp, filters[2].ProcessSample(m.Power)));
                 lastTime = m.Timestamp;
+            }
+
+            if (meas.Count > 0)
+            {
+                Action<TextAnnotation> updatePosition = label => 
+                {
+                    var ax = Plot.GetAxis(label.YAxisKey);
+                    var midAxis = ax.ActualMinimum + (ax.ActualMaximum - ax.ActualMinimum) / 2;
+                    label.TextPosition = new DataPoint(lastTime, midAxis);
+                };
+
+                var latest = meas[^1];
+                vLabel.Text = $"{latest.Voltage:F3} V";
+                aLabel.Text = $"{latest.Current:F3} mA";
+                wLabel.Text = $"{latest.Power:F3} mW";
+
+                updatePosition(vLabel);
+                updatePosition(aLabel);
+                updatePosition(wLabel);
             }
 
             var minTime = lastTime - TimeWindow.TotalMilliseconds * 1000;
