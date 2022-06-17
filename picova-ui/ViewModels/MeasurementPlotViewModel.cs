@@ -1,4 +1,4 @@
-using MathNet.Filtering;
+﻿using MathNet.Filtering;
 using MathNet.Filtering.Median;
 using OxyPlot;
 using OxyPlot.Annotations;
@@ -8,6 +8,7 @@ using PicovaUI.Models;
 using ReactiveUI;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 
 namespace PicovaUI.ViewModels
@@ -26,6 +27,7 @@ namespace PicovaUI.ViewModels
 
         public PlotModel Plot { get; }
         public TimeSpan TimeWindow { get; set; } = TimeSpan.FromSeconds(5);
+        public ReadOnlyCollection<Measurement> Measurements => new(meas);
         public Filter Filter
         {
             get => filterType;

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.IO.Ports;
 using System.Linq;
 using System.Reactive;
@@ -22,6 +23,7 @@ namespace PicovaUI.ViewModels
         public ReactiveCommand<Unit, Unit> Run { get; }
         [ObservableAsProperty] public bool Running { get; }
         public MeasurementPlotViewModel MeasurementPlot { get; } = new();
+        public ReactiveCommand<Unit, Unit> SaveData { get; }
 
         public double WindowSeconds
         {
@@ -46,6 +48,8 @@ namespace PicovaUI.ViewModels
                     reader.Disconnect();
             });
 
+            SaveData = ReactiveCommand.Create(DoSaveData);
+
             this.WhenAnyValue(vm => vm.reader.Connected)
                 .ToPropertyEx(this, vm => vm.Running);
 
@@ -58,6 +62,15 @@ namespace PicovaUI.ViewModels
                 .ObserveOn(AvaloniaScheduler.Instance)
                 .Where(_ => Running)
                 .Subscribe(MeasurementPlot.AddMeasurements);
+        }
+
+        private void DoSaveData()
+        {
+            var dst = Path.Combine(Environment.CurrentDirectory, $"PicoVA-{DateTime.Now:yyyyMMdd-HHmmss}.csv");
+            using var file = new StreamWriter(dst);
+            file.WriteLine("us,V,mA,mW");
+            foreach (var m in MeasurementPlot.Measurements)
+                file.WriteLine($"{m.Timestamp},{m.Voltage},{m.Current},{m.Power}");
         }
     }
 }
