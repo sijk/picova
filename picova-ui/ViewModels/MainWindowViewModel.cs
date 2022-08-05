@@ -23,6 +23,7 @@ namespace PicovaUI.ViewModels
         public ReactiveCommand<Unit, Unit> Run { get; }
         [ObservableAsProperty] public bool Running { get; }
         public MeasurementPlotViewModel MeasurementPlot { get; } = new();
+        public ReactiveCommand<Unit, Unit> Clear { get; }
         public ReactiveCommand<Unit, Unit> SaveData { get; }
 
         public double WindowSeconds
@@ -43,24 +44,24 @@ namespace PicovaUI.ViewModels
             Run.Subscribe(_ => 
             {
                 if (!reader.Connected)
-                {
-                    MeasurementPlot.Clear();
                     reader.Connect(SelectedPort!);
-                }
                 else
-                {
                     reader.Disconnect();
-                }
             });
 
+            Clear = ReactiveCommand.Create(() => MeasurementPlot.Clear(), 
+                this.WhenAnyValue(vm => vm.Running).Select(run => !run),
+                outputScheduler: AvaloniaScheduler.Instance);
             SaveData = ReactiveCommand.Create(DoSaveData);
 
             this.WhenAnyValue(vm => vm.reader.Connected)
-                .ToPropertyEx(this, vm => vm.Running);
+                .ToPropertyEx(this, vm => vm.Running, 
+                    scheduler: AvaloniaScheduler.Instance);
 
             this.WhenAnyValue(vm => vm.Running)
                 .Select(running => running ? "Stop" : "Run")
-                .ToPropertyEx(this, vm => vm.RunLabel);
+                .ToPropertyEx(this, vm => vm.RunLabel, 
+                    scheduler: AvaloniaScheduler.Instance);
 
             reader.Measurements
                 .ObserveOn(RxApp.TaskpoolScheduler)

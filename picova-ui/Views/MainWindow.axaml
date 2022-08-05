@@ -17,6 +17,7 @@
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <ComboBox Items="{Binding SerialPorts}" SelectedItem="{Binding SelectedPort}" IsEnabled="{Binding !Running}" VerticalAlignment="Center"/>
                 <Button Content="{Binding RunLabel}" Command="{Binding Run}"/>
+                <Button Content="Clear" Command="{Binding Clear}"/>
 
                 <Border BorderBrush="Black" BorderThickness="1,0,0,0" Height="{Binding $parent[Border].Height}" Margin="10,-10"/>
 

@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Linq.Expressions;
 
 namespace PicovaUI.ViewModels
 {
@@ -75,16 +76,22 @@ namespace PicovaUI.ViewModels
             vLine = new LineSeries
             {
                 YAxisKey = "V",
+                ItemsSource = meas,
+                Mapping = ToDataPoint(x => x.Voltage, 0),
             };
 
             aLine = new LineSeries
             {
                 YAxisKey = "A",
+                ItemsSource = meas,
+                Mapping = ToDataPoint(x => x.Current, 1),
             };
 
             wLine = new LineSeries
             {
                 YAxisKey = "W",
+                ItemsSource = meas,
+                Mapping = ToDataPoint(x => x.Power, 2),
             };
 
             vLabel = new TextAnnotation
@@ -132,12 +139,22 @@ namespace PicovaUI.ViewModels
             Refilter();
         }
 
+        private Func<object, DataPoint> ToDataPoint(Expression<Func<Measurement, float>> getter, int filterIndex)
+        {
+            var getValue = getter.Compile();
+            return (object o) =>
+            {
+                var m = (Measurement)o;
+                var value = getValue(m);
+                var filtered = filters[filterIndex].ProcessSample(value);
+                return new DataPoint(m.Timestamp, filtered);
+            };
+        }
+
         public void Clear()
         {
             meas.Clear();
-            vLine.Points.Clear();
-            aLine.Points.Clear();
-            wLine.Points.Clear();
+            Redraw();
         }
 
         public void Redraw()
@@ -147,17 +164,9 @@ namespace PicovaUI.ViewModels
 
         public void AddMeasurements(IEnumerable<Measurement> measurements)
         {
-            uint lastTime = 0;
-
             meas.AddRange(measurements);
 
-            foreach (var m in measurements)
-            {
-                vLine.Points.Add(new DataPoint(m.Timestamp, filters[0].ProcessSample(m.Voltage)));
-                aLine.Points.Add(new DataPoint(m.Timestamp, filters[1].ProcessSample(m.Current)));
-                wLine.Points.Add(new DataPoint(m.Timestamp, filters[2].ProcessSample(m.Power)));
-                lastTime = m.Timestamp;
-            }
+            uint lastTime = measurements.LastOrDefault()?.Timestamp ?? 0;
 
             if (meas.Count > 0)
             {
@@ -179,15 +188,11 @@ namespace PicovaUI.ViewModels
             }
 
             var minTime = lastTime - TimeWindow.TotalMilliseconds * 1000;
-            var n = vLine.Points.FindIndex(p => p.X >= minTime);
+            var n = meas.FindIndex(m => m.Timestamp >= minTime);
 
             if (n > 0)
             {
                 meas.RemoveRange(0, n);
-                vLine.Points.RemoveRange(0, n);
-                aLine.Points.RemoveRange(0, n);
-                wLine.Points.RemoveRange(0, n);
-
                 Plot.Axes.Single(ax => ax.Key == "T").Minimum = double.NaN;
             }
             else
@@ -207,17 +212,6 @@ namespace PicovaUI.ViewModels
             filters[0] = makeFilter();
             filters[1] = makeFilter();
             filters[2] = makeFilter();
-
-            vLine.Points.Clear();
-            aLine.Points.Clear();
-            wLine.Points.Clear();
-
-            foreach (var m in meas)
-            {
-                vLine.Points.Add(new DataPoint(m.Timestamp, filters[0].ProcessSample(m.Voltage)));
-                aLine.Points.Add(new DataPoint(m.Timestamp, filters[1].ProcessSample(m.Current)));
-                wLine.Points.Add(new DataPoint(m.Timestamp, filters[2].ProcessSample(m.Power)));
-            }
 
             Plot.InvalidatePlot(true);
         }
