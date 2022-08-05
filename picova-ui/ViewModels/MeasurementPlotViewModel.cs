@@ -1,4 +1,4 @@
-﻿using MathNet.Filtering;
+using MathNet.Filtering;
 using MathNet.Filtering.Median;
 using OxyPlot;
 using OxyPlot.Annotations;
@@ -130,6 +130,14 @@ namespace PicovaUI.ViewModels
             Plot.Annotations.Add(wLabel);
 
             Refilter();
+        }
+
+        public void Clear()
+        {
+            meas.Clear();
+            vLine.Points.Clear();
+            aLine.Points.Clear();
+            wLine.Points.Clear();
         }
 
         public void AddMeasurements(IEnumerable<Measurement> measurements)

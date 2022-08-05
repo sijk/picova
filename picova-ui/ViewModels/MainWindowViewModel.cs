@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Ports;
@@ -43,9 +43,14 @@ namespace PicovaUI.ViewModels
             Run.Subscribe(_ => 
             {
                 if (!reader.Connected)
+                {
+                    MeasurementPlot.Clear();
                     reader.Connect(SelectedPort!);
+                }
                 else
+                {
                     reader.Disconnect();
+                }
             });
 
             SaveData = ReactiveCommand.Create(DoSaveData);
