@@ -1,4 +1,4 @@
-using MathNet.Filtering;
+﻿using MathNet.Filtering;
 using MathNet.Filtering.Median;
 using OxyPlot;
 using OxyPlot.Annotations;
@@ -140,6 +140,11 @@ namespace PicovaUI.ViewModels
             wLine.Points.Clear();
         }
 
+        public void Redraw()
+        {
+            Plot.InvalidatePlot(true);
+        }
+
         public void AddMeasurements(IEnumerable<Measurement> measurements)
         {
             uint lastTime = 0;
@@ -189,8 +194,6 @@ namespace PicovaUI.ViewModels
             {
                 Plot.Axes.Single(ax => ax.Key == "T").Minimum = minTime;
             }
-
-            Plot.InvalidatePlot(true);
         }
 
         private void Refilter()

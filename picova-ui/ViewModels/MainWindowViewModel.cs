@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Ports;
@@ -63,10 +63,13 @@ namespace PicovaUI.ViewModels
                 .ToPropertyEx(this, vm => vm.RunLabel);
 
             reader.Measurements
+                .ObserveOn(RxApp.TaskpoolScheduler)
                 .Buffer(TimeSpan.FromMilliseconds(100))
-                .ObserveOn(AvaloniaScheduler.Instance)
                 .Where(_ => Running)
-                .Subscribe(MeasurementPlot.AddMeasurements);
+                .Do(MeasurementPlot.AddMeasurements)
+                .ObserveOn(AvaloniaScheduler.Instance)
+                .Do(_ => MeasurementPlot.Redraw())
+                .Subscribe();
         }
 
         private void DoSaveData()
