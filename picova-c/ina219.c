@@ -13,18 +13,19 @@ enum ina219_reg
 
 static const uint16_t INA219_BUS_OVF  = (1 << 0);
 static const uint16_t INA219_BUS_CNVR = (1 << 1);
+static const uint TIMEOUT_US = 1000;
 
 static int ina219_read_reg(ina219_t* hw, uint8_t reg, uint16_t* value)
 {
     int err;
     uint8_t buff[2];
 
-    err = i2c_write_blocking(hw->i2c, hw->addr, &reg, sizeof(reg), true);
-    if (err < 0) 
+    err = i2c_write_timeout_us(hw->i2c, hw->addr, &reg, sizeof(reg), true, TIMEOUT_US);
+    if (err < 0)
         return err;
 
-    err = i2c_read_blocking(hw->i2c, hw->addr, buff, sizeof(buff), false);
-    if (err < 0) 
+    err = i2c_read_timeout_us(hw->i2c, hw->addr, buff, sizeof(buff), false, TIMEOUT_US);
+    if (err < 0)
         return err;
 
     *value = (buff[0] << 8) | buff[1];
@@ -39,7 +40,7 @@ static int ina219_write_reg(ina219_t* hw, uint8_t reg, uint16_t value)
         value & 0xFF
     };
 
-    return i2c_write_blocking(hw->i2c, hw->addr, buff, sizeof(buff), false);
+    return i2c_write_timeout_us(hw->i2c, hw->addr, buff, sizeof(buff), false, TIMEOUT_US);
 }
 
 int ina219_init(ina219_t* hw, i2c_inst_t* i2c, uint8_t addr, float shunt_ohms)
@@ -317,7 +318,7 @@ uint32_t ina219_adc_conversion_us(enum ina219_adc adc)
 
 uint32_t ina219_cfg_conversion_us(const ina219_cfg_t* cfg)
 {
-    return ina219_adc_conversion_us(cfg->bus_adc) 
+    return ina219_adc_conversion_us(cfg->bus_adc)
          + ina219_adc_conversion_us(cfg->shunt_adc);
 }
 
