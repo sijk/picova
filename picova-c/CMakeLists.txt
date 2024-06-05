@@ -6,12 +6,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project(picova)
 pico_sdk_init()
 
+add_subdirectory(u8g2)
+target_compile_options(u8g2 PUBLIC -ffunction-sections -fdata-sections)
+target_link_options(u8g2 PUBLIC LINKER:--gc-sections)
+
 add_executable(picova
     main.c
     ina219.c
 )
 
-target_link_libraries(picova 
+target_link_libraries(picova
     hardware_gpio
     hardware_i2c
     pico_runtime
@@ -19,6 +23,7 @@ target_link_libraries(picova
     pico_stdio_usb
     pico_printf
     pico_multicore
+    u8g2
 )
 
 pico_add_extra_outputs(picova)
