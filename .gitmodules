@@ -1,3 +1,3 @@
 [submodule "picova-c/u8g2"]
-	path = picova-c/u8g2
+	path = picova-c/lib/u8g2
 	url = https://github.com/olikraus/u8g2.git
