@@ -1,0 +1,15 @@
+{
+  "name": "Raspberry Pi Pico SDK",
+  "build": {
+    "dockerfile": "Containerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools-extension-pack",
+        "ms-vscode.cmake-tools",
+        "EditorConfig.EditorConfig"
+      ]
+    }
+  }
+}

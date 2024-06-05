@@ -1,0 +1,18 @@
+FROM alpine:20240329 AS pico-sdk
+ENV PICO_SDK_PATH=/pico-sdk
+ENV CMAKE_GENERATOR=Ninja
+RUN apk add --no-cache \
+  -X https://dl-cdn.alpinelinux.org/alpine/edge/testing \
+  cmake \
+  cpputest \
+  doxygen \
+  g++ \
+  g++-arm-none-eabi \
+  git \
+  gzip \
+  lcov \
+  python3 \
+  samurai
+RUN git clone -b master --depth=1 https://github.com/raspberrypi/pico-sdk.git ${PICO_SDK_PATH} \
+  && git -C ${PICO_SDK_PATH}/lib submodule update --init --depth=1 \
+  && git -C ${PICO_SDK_PATH}/lib/tinyusb submodule update --init --depth=1 hw/mcu/raspberry_pi
