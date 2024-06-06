@@ -20,6 +20,7 @@ add_subdirectory(lib/pico-i2c-dma)
 add_executable(picova
     main.c
     ina219.c
+    display.c
 )
 
 target_link_libraries(picova
