@@ -107,25 +107,28 @@ static uint8_t cad_cb(u8x8_t* u8x8, uint8_t msg, uint8_t arg_int, void* arg_ptr)
 
 static uint8_t i2c_cb(u8x8_t* u8x8, uint8_t msg, uint8_t arg_int, void* arg_ptr)
 {
+    static i2c_dma_xfer_t xfer = NULL;
     i2c_dma_t* const i2c_dma = u8x8_GetUserPtr(u8x8);
-    static uint8_t buff[129];
-    static size_t len = 0;
 
     switch (msg) {
     case U8X8_MSG_BYTE_START_TRANSFER:
-        len = 0;
+        xfer = i2c_dma_xfer_init(i2c_dma, u8g2_GetI2CAddress(&u8g2) >> 1);
+        if (!xfer)
+            return 0;
         break;
 
     case U8X8_MSG_BYTE_SEND:
-        assert(len + arg_int <= sizeof(buff));
-        memcpy(&buff[len], arg_ptr, arg_int);
-        len += arg_int;
+        if (i2c_dma_xfer_write(xfer, arg_ptr, arg_int) != PICO_OK) {
+            i2c_dma_xfer_abort(xfer);
+            xfer = NULL;
+            return 0;
+        }
         break;
 
     case U8X8_MSG_BYTE_END_TRANSFER:
-        int ret = i2c_dma_write(i2c_dma, u8g2_GetI2CAddress(&u8g2) >> 1, buff, len);
-        if (ret < 0)
+        if (i2c_dma_xfer_execute(xfer) != PICO_OK)
             return 0;
+        xfer = NULL;
         break;
 
     default:
