@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <string.h>
+#include "FreeRTOS.h"
+#include "queue.h"
+#include "task.h"
+#include "timers.h"
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
-#include "pico/multicore.h"
 #include "pico/stdio_usb.h"
 #include "pico/time.h"
-#include "pico/util/queue.h"
+#include "i2c_dma.h"
 #include "ina219.h"
 #include "u8g2.h"
 
@@ -22,7 +25,8 @@ static i2c_inst_t* const I2C_SSD1306 = i2c1;
 static const float SHUNT_OHMS = 0.1f;
 
 static ina219_t ina219;
-static queue_t meas_queue;
+static QueueHandle_t meas_queue = NULL;
+static QueueHandle_t display_queue = NULL;
 static u8g2_t u8g2;
 
 struct measurement
@@ -31,10 +35,94 @@ struct measurement
     ina219_data_t data;
 };
 
-static void main_core1()
+struct avg_measurement
 {
+    float V, mA, mW;
+};
+
+static bool on_read_timer(repeating_timer_t* timer)
+{
+    TaskHandle_t read_task = timer->user_data;
+    xTaskNotifyGive(read_task);
+    return true;
+}
+
+static void on_disp_timer(TimerHandle_t timer)
+{
+    TaskHandle_t write_task = pvTimerGetTimerID(timer);
+    xTaskNotifyGive(write_task);
+}
+
+static uint8_t i2c_cb(u8x8_t* u8x8, uint8_t msg, uint8_t arg_int, void* arg_ptr)
+{
+    i2c_dma_t* const i2c_dma = u8x8_GetUserPtr(u8x8);
+    static uint8_t buff[32];
+    static uint8_t len = 0;
+
+    switch (msg) {
+    case U8X8_MSG_BYTE_START_TRANSFER:
+        len = 0;
+        break;
+
+    case U8X8_MSG_BYTE_SEND:
+        assert(len + arg_int <= sizeof(buff));
+        memcpy(&buff[len], arg_ptr, arg_int);
+        len += arg_int;
+        break;
+
+    case U8X8_MSG_BYTE_END_TRANSFER:
+        int ret = i2c_dma_write(i2c_dma, u8g2_GetI2CAddress(&u8g2) >> 1, buff, len);
+        if (ret != len)
+            return 0;
+        break;
+
+    default:
+        return 0;
+    }
+
+    return 1;
+}
+
+static uint8_t gpio_delay_cb(u8x8_t* u8x8, uint8_t msg, uint8_t arg_int, void* arg_ptr)
+{
+    switch(msg) {
+    case U8X8_MSG_DELAY_MILLI:
+        vTaskDelay(pdMS_TO_TICKS(arg_int));
+        break;
+
+    default:
+        return 0;
+    }
+
+    return 1;
+}
+
+// Read measurements from the INA219 as fast as possible and push them into a
+// queue. This is the only task running on core 1.
+static void read_task(void* arg)
+{
+    const ina219_cfg_t cfg = {
+        .bus_range   = INA219_BUS_RANGE_16V,
+        .shunt_range = INA219_SHUNT_RANGE_40mV,
+        .bus_adc     = INA219_ADC_BITS_9,
+        .shunt_adc   = INA219_ADC_BITS_11,
+    };
+
+    ina219_init(&ina219, I2C_INA219, INA219_ADDR_DEFAULT, SHUNT_OHMS);
+    ina219_reset(&ina219);
+    ina219_configure(&ina219, &cfg);
+    ina219_calibrate(&ina219);
+
+    // Use a repeating timer on this core to initiate reads at the INA219's
+    // conversion rate.
+    TaskHandle_t task = xTaskGetCurrentTaskHandle();
+    alarm_pool_t* alarm_pool = alarm_pool_create_with_unused_hardware_alarm(1);
+    int64_t read_period = ina219_conversion_us(&ina219);
+    struct repeating_timer read_timer;
+    alarm_pool_add_repeating_timer_us(alarm_pool, -read_period, on_read_timer, task, &read_timer);
+
     while (true) {
-        absolute_time_t next = make_timeout_time_us(ina219_conversion_us(&ina219));
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         struct measurement m;
         m.timestamp = time_us_32();
@@ -61,60 +149,100 @@ static void main_core1()
             continue;
         }
 
-        queue_add_blocking(&meas_queue, &m);
-        sleep_until(next);
+        xQueueSendToBack(meas_queue, &m, portMAX_DELAY);
     }
 }
 
-static uint8_t i2c_cb(u8x8_t* u8x8, uint8_t msg, uint8_t arg_int, void* arg_ptr)
+// Write the measurements out over stdio (USB CDC). Also accumulate averages to
+// display periodically on the OLED.
+static void write_task(void* arg)
 {
-    static uint8_t buff[32];
-    static uint8_t len = 0;
+    // Show the splash screen for a while.
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    gpio_put(PIN_LED, 1);
 
-    switch (msg) {
-    case U8X8_MSG_BYTE_START_TRANSFER:
-        len = 0;
-        break;
+    struct measurement m;
+    struct avg_measurement avg = {0};
+    size_t avg_num = 0;
 
-    case U8X8_MSG_BYTE_SEND:
-        memcpy(&buff[len], arg_ptr, arg_int);
-        len += arg_int;
-        break;
+    // Periodically display the averaged measurement on the display.
+    TaskHandle_t task = xTaskGetCurrentTaskHandle();
+    TimerHandle_t disp_timer = xTimerCreate("disp", pdMS_TO_TICKS(250), pdTRUE, task, on_disp_timer);
+    xTimerStart(disp_timer, 0);
 
-    case U8X8_MSG_BYTE_END_TRANSFER:
-        int ret = i2c_write_blocking(I2C_SSD1306, u8g2_GetI2CAddress(&u8g2) >> 1, buff, len, false);
-        if (ret != len)
-            return 0;
-        break;
+    while (true) {
+        xQueueReceive(meas_queue, &m, portMAX_DELAY);
+        const float V = ina219_data_bus_V(&m.data);
+        const float mA = ina219_data_current_mA(&m.data);
+        const float mW = ina219_data_power_mW(&m.data);
 
-    default:
-        return 0;
+        printf("%lu,%f,%f,%f\n", m.timestamp, V, mA, mW);
+
+        avg.V += V;
+        avg.mA += mA;
+        avg.mW += mW;
+        avg_num += 1;
+
+        if (ulTaskNotifyTake(pdTRUE, 0)) {
+            avg.V /= avg_num;
+            avg.mA /= avg_num;
+            avg.mW /= avg_num;
+
+            xQueueSendToBack(display_queue, &avg, 0);
+
+            avg.V = 0;
+            avg.mA = 0;
+            avg.mW = 0;
+            avg_num = 0;
+        }
     }
-
-    return 1;
 }
 
-static uint8_t gpio_delay_cb(u8x8_t* u8x8, uint8_t msg, uint8_t arg_int, void* arg_ptr)
+// Display averaged readings on the OLED.
+static void display_task(void* arg)
 {
-    switch(msg) {
-    case U8X8_MSG_DELAY_MILLI:
-        sleep_ms(arg_int);
-        break;
+    struct avg_measurement m;
+    char str[11];
 
-    default:
-        return 0;
+    u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2, U8G2_R2, i2c_cb, gpio_delay_cb);
+    u8g2_InitDisplay(&u8g2);
+    u8g2_SetFont(&u8g2, u8g2_font_profont22_tr);
+    u8g2_ClearBuffer(&u8g2);
+    u8g2_DrawStr(&u8g2, 28, 40, "PicoVA");
+    u8g2_SendBuffer(&u8g2);
+    u8g2_SetPowerSave(&u8g2, 0);
+
+    while (true) {
+        xQueueReceive(display_queue, &m, portMAX_DELAY);
+
+        u8g2_ClearBuffer(&u8g2);
+        snprintf(str, sizeof(str), "%7.3f V", m.V);
+        u8g2_DrawStr(&u8g2, 0, 18, str);
+        snprintf(str, sizeof(str), "%7.3f mA", m.mA);
+        u8g2_DrawStr(&u8g2, 0, 40, str);
+        snprintf(str, sizeof(str), "%7.3f mW", m.mW);
+        u8g2_DrawStr(&u8g2, 0, 62, str);
+        u8g2_SendBuffer(&u8g2);
     }
+}
 
-    return 1;
+static void __attribute__((noreturn)) die(const char* msg)
+{
+    puts(msg);
+    while (true) {
+        gpio_put(PIN_LED, 1);
+        sleep_ms(250);
+        gpio_put(PIN_LED, 0);
+        sleep_ms(250);
+    }
 }
 
 int main()
 {
     stdio_usb_init();
 
-    // gpio_init(PIN_LED);
-    // gpio_set_dir(PIN_LED, GPIO_OUT);
-    // gpio_put(PIN_LED, 1);
+    gpio_init(PIN_LED);
+    gpio_set_dir(PIN_LED, GPIO_OUT);
 
     // Set up the INA219 pins
     gpio_init(PIN_VCC_INA219);
@@ -136,57 +264,42 @@ int main()
     gpio_set_drive_strength(PIN_VCC_SSD1306, GPIO_DRIVE_STRENGTH_12MA);
     gpio_put(PIN_VCC_SSD1306, 1);
 
-    i2c_init(I2C_SSD1306, 1000000);
-    gpio_set_function(PIN_SCL_SSD1306, GPIO_FUNC_I2C);
-    gpio_set_function(PIN_SDA_SSD1306, GPIO_FUNC_I2C);
+    i2c_dma_t* i2c_dma = NULL;
+    i2c_dma_init(&i2c_dma, I2C_SSD1306, 1000000, PIN_SDA_SSD1306, PIN_SCL_SSD1306);
+    u8g2_SetUserPtr(&u8g2, i2c_dma);
 
-    // Set up the INA219
-    const ina219_cfg_t cfg = {
-        .bus_range   = INA219_BUS_RANGE_16V,
-        .shunt_range = INA219_SHUNT_RANGE_40mV,
-        .bus_adc     = INA219_ADC_BITS_9,
-        .shunt_adc   = INA219_ADC_BITS_11,
-    };
-
-    ina219_init(&ina219, I2C_INA219, INA219_ADDR_DEFAULT, SHUNT_OHMS);
-    ina219_configure(&ina219, &cfg);
-    ina219_calibrate(&ina219);
-
-    // Set up the SSD1306
-    u8g2_Setup_ssd1306_i2c_128x64_noname_f(&u8g2, U8G2_R2, i2c_cb, gpio_delay_cb);
-    u8g2_InitDisplay(&u8g2);
-    u8g2_SetFont(&u8g2, u8g2_font_profont22_tr);
-    u8g2_ClearBuffer(&u8g2);
-    u8g2_DrawStr(&u8g2, 28, 40, "PicoVA");
-    u8g2_SendBuffer(&u8g2);
-    u8g2_SetPowerSave(&u8g2, 0);
-    sleep_ms(1500);
-
-    // Start the main loop
-    queue_init(&meas_queue, sizeof(struct measurement), 255);
-    multicore_launch_core1(main_core1);
-
-    uint32_t last_update = 0;
-    while (true) {
-        struct measurement m;
-        queue_remove_blocking(&meas_queue, &m);
-        const float V = ina219_data_bus_V(&m.data);
-        const float mA = ina219_data_current_mA(&m.data);
-        const float mW = ina219_data_power_mW(&m.data);
-
-        printf("%lu,%f,%f,%f\n", m.timestamp, V, mA, mW);
-
-        if (time_us_32() - last_update >= 250000) {
-            last_update = time_us_32();
-            char str[11];
-            u8g2_ClearBuffer(&u8g2);
-            snprintf(str, sizeof(str), "%7.3f V", V);
-            u8g2_DrawStr(&u8g2, 0, 18, str);
-            snprintf(str, sizeof(str), "%7.3f mA", mA);
-            u8g2_DrawStr(&u8g2, 0, 40, str);
-            snprintf(str, sizeof(str), "%7.3f mW", mW);
-            u8g2_DrawStr(&u8g2, 0, 62, str);
-            u8g2_SendBuffer(&u8g2);
-        }
+    // Set up tasks and IPC
+    meas_queue = xQueueCreate(255, sizeof(struct measurement));
+    if (!meas_queue) {
+        die("Failed to create measurement queue");
     }
+
+    display_queue = xQueueCreate(2, sizeof(struct avg_measurement));
+    if (!display_queue) {
+        die("Failed to create display queue");
+    }
+
+    // TODO: run read_task on core 1. Currently the system locks up when
+    // read_task is run on core 1.
+    BaseType_t ret = xTaskCreateAffinitySet(read_task, "read", 1024, NULL, configMAX_PRIORITIES - 1, 1 << 0, NULL);
+    if (ret != pdPASS) {
+        die("Failed to create read task on core 1");
+    }
+
+    ret = xTaskCreateAffinitySet(write_task, "write", 1024, NULL, tskIDLE_PRIORITY + 1, 1 << 0, NULL);
+    if (ret != pdPASS) {
+        die("Failed to create write task on core 0");
+    }
+
+    ret = xTaskCreateAffinitySet(display_task, "display", 1024, NULL, tskIDLE_PRIORITY + 1, 1 << 0, NULL);
+    if (ret != pdPASS) {
+        puts("Failed to create display task on core 0");
+    }
+
+    vTaskStartScheduler();
+}
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+    die("Stack overflow");
 }

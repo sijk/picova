@@ -1,3 +1,9 @@
 [submodule "picova-c/u8g2"]
 	path = picova-c/lib/u8g2
 	url = https://github.com/olikraus/u8g2.git
+[submodule "picova-c/lib/pico-i2c-dma"]
+	path = picova-c/lib/pico-i2c-dma
+	url = https://github.com/fivdi/pico-i2c-dma
+[submodule "picova-c/lib/freertos"]
+	path = picova-c/lib/freertos
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel
